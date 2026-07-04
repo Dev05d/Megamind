@@ -1,0 +1,13 @@
+qdrant-client
+ollama
+trafilatura
+playwright
+yt-dlp
+youtube-transcript-api
+PyMuPDF
+Pillow
+tqdm
+python-dotenv
+readability-lxml 
+markdownify
+questionary
