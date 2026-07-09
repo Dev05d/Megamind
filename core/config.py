@@ -22,8 +22,11 @@ VECTOR_SIZE     = int(os.getenv("VECTOR_SIZE", 768))
 
 # AI Models (all served locally via Ollama)
 EMBED_MODEL     = os.getenv("EMBED_MODEL", "nomic-embed-text")
-CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama3")
+CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama3.2:3b")
+ROUTER_MODEL    = os.getenv("ROUTER_MODEL", "llama3.2:3b" )
 OCR_MODEL       = os.getenv("OCR_MODEL",   "glm-ocr")
+CONTEXT_LIMIT   = os.getenv("CONTEXT_LIMIT", 8192)
+
 
 OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 os.environ["OLLAMA_HOST"] = OLLAMA_HOST

@@ -1,5 +1,3 @@
-import sys
-import argparse
 import questionary
 
 from core.vector_store import init_db, close_db, _get_client
