@@ -18,14 +18,20 @@ else:
     DB_PATH = os.path.normpath(os.path.join(BASE_DIR, env_db_path))
 
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "megamind")
-VECTOR_SIZE     = int(os.getenv("VECTOR_SIZE", 768))
+VECTOR_SIZE     = int(os.getenv("VECTOR_SIZE", 2560))
 
 # AI Models (all served locally via Ollama)
-EMBED_MODEL     = os.getenv("EMBED_MODEL", "nomic-embed-text")
+EMBED_MODEL     = os.getenv("EMBED_MODEL", "qwen3-embedding:4b")
 CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama3.2:3b")
-ROUTER_MODEL    = os.getenv("ROUTER_MODEL", "llama3.2:3b" )
-OCR_MODEL       = os.getenv("OCR_MODEL",   "glm-ocr")
 CONTEXT_LIMIT   = os.getenv("CONTEXT_LIMIT", 8192)
+ROUTER_MODEL    = os.getenv("ROUTER_MODEL", "llama3.2:3b" )
+ROUTER_CONTEXT  = os.getenv("ROUTER_CONTEXT", 4096)
+OCR_MODEL       = os.getenv("OCR_MODEL",   "glm-ocr")
+
+
+## ADVANCED SETTINGS ##
+TOP_K_CHUNKS    = os.getenv("TOP_K_CHUNKS", 5)
+DENSE_THRESHOLD = os.getenv("DENSE_THRESHOLD", 0.5)
 
 
 OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "http://localhost:11434")

@@ -1,7 +1,8 @@
 import ollama
 from pydantic import BaseModel, Field
 from typing import Optional
-from core.config import ROUTER_MODEL
+from core.config import ROUTER_MODEL, ROUTER_CONTEXT
+from core.memory_manager import get_exact_tokens, enforce_token_budget, draw_token_bar
 
 class RouterResponse(BaseModel):
     route: str = Field(
@@ -13,23 +14,6 @@ class RouterResponse(BaseModel):
     )
 
 def route_query(user_query: str, chat_history: list[dict], active_db_chunks: list[dict]) -> RouterResponse:
-    # 1. Dynamically build context blocks to minimize token overhead
-    context_blocks = []
-
-    if active_db_chunks:
-        chunks_subset = active_db_chunks[-4:]
-        chunks_str = "\n\n".join([c["text"] for c in chunks_subset])
-        context_blocks.append(f"=== ACTIVE DATABASE CHUNKS IN MEMORY ===\n{chunks_str}")
-
-    if chat_history:
-        history_subset = chat_history[-4:] 
-        history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history_subset])
-        context_blocks.append(f"=== RECENT CHAT HISTORY ===\n{history_str}")
-
-    context_blocks.append(f"=== USER LATEST QUERY ===\n{user_query}")
-    user_message = "\n\n".join(context_blocks)
-
-    # 2. Rich system prompt combining the best classification examples and JSON directives
     system_prompt = """
     You are the central query router for an advanced RAG system. 
     Analyze the user's latest query, context, and classify it into exactly one category.
@@ -48,6 +32,53 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
     {"route": "chitchat", "rewritten_query": null}
     """
 
+    # Parse and establish context limits locally
+    router_limit = int(ROUTER_CONTEXT)
+    system_base_tokens = get_exact_tokens(system_prompt, ROUTER_MODEL)
+    query_tokens = get_exact_tokens(user_query, ROUTER_MODEL)
+
+    # Protect operational pipeline state by modifying local shallow copies
+    chunks_working_set = []
+    for chunk in active_db_chunks:
+        chunk_copy = chunk.copy()
+        if "tokens" not in chunk_copy:
+            chunk_copy["tokens"] = get_exact_tokens(chunk_copy["text"], ROUTER_MODEL)
+        chunks_working_set.append(chunk_copy)
+
+    history_working_set = []
+    for msg in chat_history:
+        msg_copy = msg.copy()
+        if "tokens" not in msg_copy:
+            formatted_msg = f"{msg_copy['role'].capitalize()}: {msg_copy['content']}"
+            msg_copy["tokens"] = get_exact_tokens(formatted_msg, ROUTER_MODEL)
+        history_working_set.append(msg_copy)
+
+    # Enforce token budget strictly using the parameter
+    total_estimated_tokens = enforce_token_budget(
+        system_base_tokens=system_base_tokens,
+        query_tokens=query_tokens,
+        active_db_chunks=chunks_working_set,
+        chat_history=history_working_set,
+        context_limit=router_limit
+    )
+
+    # Render context health bar inside console scaled to router_limit
+    draw_token_bar(used=total_estimated_tokens, context_limit=router_limit)
+
+    # Reconstruct compressed context blocks from surviving working sets
+    context_blocks = []
+
+    if chunks_working_set:
+        chunks_str = "\n\n".join([c["text"] for c in chunks_working_set])
+        context_blocks.append(f"=== ACTIVE DATABASE CHUNKS IN MEMORY ===\n{chunks_str}")
+
+    if history_working_set:
+        history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history_working_set])
+        context_blocks.append(f"=== RECENT CHAT HISTORY ===\n{history_str}")
+
+    context_blocks.append(f"=== USER LATEST QUERY ===\n{user_query}")
+    user_message = "\n\n".join(context_blocks)
+
     try:
         response = ollama.chat(
             model=ROUTER_MODEL, 
@@ -61,14 +92,10 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
                 'seed': 42
             } 
         )
-        
         return RouterResponse.model_validate_json(response.message.content)
     except Exception as e:
         print(f"[Router] ⚠️ Parsing or Ollama failure: {e}")
-        
-        # Smart deterministic fallback logic
         cleaned_query = user_query.lower().strip()
         if cleaned_query in ["hi", "hello", "hey", "thanks", "thank you"]:
             return RouterResponse(route="chitchat", rewritten_query=None)
-            
         return RouterResponse(route="needs_retrieval", rewritten_query=user_query)

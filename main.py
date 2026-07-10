@@ -6,7 +6,7 @@ from scrapers.scrape_pdf     import ingest_pdf
 from scrapers.scrape_web     import ingest_web
 from scrapers.scrape_youtube import ingest_youtube
 from scrapers.scrape_reddit  import ingest_reddit
-from menutools import interactive_menu
+from menu import interactive_menu
 
 
 def main() -> None:

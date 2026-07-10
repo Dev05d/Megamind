@@ -11,3 +11,4 @@ python-dotenv
 readability-lxml 
 markdownify
 questionary
+fastembed

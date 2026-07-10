@@ -1,7 +1,7 @@
 import os
 import io
 
-import fitz          # PyMuPDF — now only used to render images
+import fitz         
 import ollama
 from PIL import Image
 
@@ -19,30 +19,47 @@ def _page_to_jpeg_bytes(page: fitz.Page, dpi: int = 150) -> bytes:
 
 
 def _ocr_page(page: fitz.Page) -> str:
-    """Sends a rendered page image directly to the local OCR model."""
+    """Sends a rendered page image directly to the local OCR model with anti-looping safeguards."""
     image_bytes = _page_to_jpeg_bytes(page)
+    
     response = ollama.chat(
         model=OCR_MODEL,
         messages=[{
             "role":    "user",
-            "content": "Extract all text, math equations, and formatting from this image as clean Markdown.",
+            "content": "Extract all text, math equations, and formatting from this image as clean Markdown. Do NOT describe the image and do NOT repeat text.",
             "images":  [image_bytes],
         }],
+        options={
+            "temperature": 0.0,       
+            "repeat_penalty": 1.2,    
+            "num_predict": 2048      
+        }
     )
-    return response["message"]["content"]
+    
+    raw_text = response["message"]["content"]
+    
+    lines = raw_text.splitlines()
+    clean_lines = []
+    
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            clean_lines.append(line)
+    
+        elif not clean_lines or line_stripped != clean_lines[-1].strip():
+            clean_lines.append(line)
+            
+    return "\n".join(clean_lines)
 
 
 def scrape_pdf(file_path: str) -> str:
-    """
-    Extracts text from a PDF purely using Visual OCR on every single page.
-    This guarantees any hidden, mangled text layers are completely ignored.
-    """
+
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"PDF not found: {file_path}")
 
     doc  = fitz.open(file_path)
     name = os.path.basename(file_path)
-    print(f"\n[PDF] Opening '{name}' — {len(doc)} pages (Pure OCR Mode).")
+    print(f"\n[PDF] Opening '{name}' — {len(doc)} pages (OCR).")
 
     pages_text: list[str] = []
 
