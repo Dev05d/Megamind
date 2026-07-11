@@ -115,7 +115,9 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
             query_tokens=query_tokens, 
             active_db_chunks=active_db_chunks, 
             chat_history=chat_history,
-            context_limit=main_limit
+            context_limit=main_limit,
+            label="Retriever",
+            persistent=True
         )
 
         active_chunk_ids = [c["id"] for c in active_db_chunks]

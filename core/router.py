@@ -2,7 +2,7 @@ import ollama
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.config import ROUTER_MODEL, ROUTER_CONTEXT
-from core.memory_manager import get_exact_tokens, enforce_token_budget, draw_token_bar
+from core.memory_manager import get_exact_tokens, enforce_token_budget
 
 class RouterResponse(BaseModel):
     route: str = Field(
@@ -25,7 +25,14 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
     - "needs_novel_retrieval": Asking to go deeper or find NEW facts about the current topic that aren't answered by the active chunks. (e.g., "tell me more about this", "go deeper on that last point")
 
     REWRITING RULES:
-    If category is "needs_retrieval" or "needs_novel_retrieval", provide a standalone `rewritten_query` replacing pronouns (he, she, it, this) with real subjects from history. Otherwise, set `rewritten_query` to null.
+    If category is "needs_retrieval" or "needs_novel_retrieval", the rewritten_query MUST be a
+    standalone, topically-specific query -- never a bare continuation phrase.
+    - If the query contains pronouns (he, she, it, this), replace them with the real subject from history.
+    - If the query is a vague continuation with no explicit topic ("more info", "tell me more",
+    "go deeper", "what else"), synthesize a specific standalone query using the actual subject
+    of the current conversation topic from history (e.g. "more info" about a 3D coordinate
+    system discussion -> "additional details on the 3D coordinate system, axes, and origin").
+    rewritten_query must never be null or empty when the route is needs_retrieval or needs_novel_retrieval.
 
     RESPONSE FORMAT:
     You must output a single valid JSON object matching this schema layout:
@@ -37,33 +44,49 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
     system_base_tokens = get_exact_tokens(system_prompt, ROUTER_MODEL)
     query_tokens = get_exact_tokens(user_query, ROUTER_MODEL)
 
-    # Protect operational pipeline state by modifying local shallow copies
+    # Protect operational pipeline state by modifying local shallow copies.
+    # Token counts are cached under a model-specific key (tokens__<model>) so
+    # this never silently reuses a count computed for CHAT_MODEL elsewhere in
+    # the pipeline -- different models can tokenize the same text differently.
+    router_token_key = f"tokens__{ROUTER_MODEL}"
+
     chunks_working_set = []
     for chunk in active_db_chunks:
         chunk_copy = chunk.copy()
-        if "tokens" not in chunk_copy:
-            chunk_copy["tokens"] = get_exact_tokens(chunk_copy["text"], ROUTER_MODEL)
+        if router_token_key not in chunk_copy:
+            chunk_copy[router_token_key] = get_exact_tokens(chunk_copy["text"], ROUTER_MODEL)
+        # enforce_token_budget reads the "tokens" key; point it at this call's
+        # model-specific count without disturbing the original cached value.
+        chunk_copy["tokens"] = chunk_copy[router_token_key]
         chunks_working_set.append(chunk_copy)
 
     history_working_set = []
     for msg in chat_history:
         msg_copy = msg.copy()
-        if "tokens" not in msg_copy:
+        if router_token_key not in msg_copy:
             formatted_msg = f"{msg_copy['role'].capitalize()}: {msg_copy['content']}"
-            msg_copy["tokens"] = get_exact_tokens(formatted_msg, ROUTER_MODEL)
+            msg_copy[router_token_key] = get_exact_tokens(formatted_msg, ROUTER_MODEL)
+        msg_copy["tokens"] = msg_copy[router_token_key]
         history_working_set.append(msg_copy)
 
-    # Enforce token budget strictly using the parameter
+    # Enforce token budget strictly using the parameter. This operates on
+    # scratch copies (chunks_working_set / history_working_set), so any
+    # eviction here only trims what the router itself sees this call -- it
+    # never touches the real active_db_chunks / chat_history in the main
+    # session. generation_buffer=0 because this call is classification-only
+    # (a short JSON response), not a full chat generation.
     total_estimated_tokens = enforce_token_budget(
         system_base_tokens=system_base_tokens,
         query_tokens=query_tokens,
         active_db_chunks=chunks_working_set,
         chat_history=history_working_set,
-        context_limit=router_limit
+        context_limit=router_limit,
+        label="Router",
+        persistent=False,
+        generation_buffer=0
     )
 
-    # Render context health bar inside console scaled to router_limit
-    draw_token_bar(used=total_estimated_tokens, context_limit=router_limit)
+    #draw_token_bar(used=total_estimated_tokens, context_limit=router_limit)
 
     # Reconstruct compressed context blocks from surviving working sets
     context_blocks = []

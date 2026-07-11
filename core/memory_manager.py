@@ -23,29 +23,45 @@ def enforce_token_budget(
     query_tokens: int, 
     active_db_chunks: list, 
     chat_history: list,
-    context_limit: int
+    context_limit: int,
+    label: str = "Memory Manager",
+    persistent: bool = True,
+    generation_buffer: int = 1024
 ) -> int:
-    """Cascading memory manager governed strictly by the passed context_limit."""
+    """Cascading memory manager governed strictly by the passed context_limit.
+
+    label: identifies the caller in log output (e.g. "Router", "Retriever").
+    persistent: whether the lists passed in are the real session state
+        (evictions permanently shrink chat memory) or local scratch copies
+        (evictions only affect this one call, e.g. the router's own prompt).
+        This is purely a logging distinction -- callers are responsible for
+        actually passing copies vs. the live lists.
+    generation_buffer: headroom reserved for the model's own response.
+        Defaults to 1024 for chat-generation callers; pass 0 (or a smaller
+        value) for classification-only callers like the router that don't
+        need room for a long generated reply.
+    """
     target_limit = context_limit - _SAFETY_BUFFER
+    scope_tag = "session" if persistent else "local-only, not saved"
 
     def get_current_total():
         chunk_tokens = sum(c.get("tokens", 0) for c in active_db_chunks)
         history_tokens = sum(h.get("tokens", 0) for h in chat_history)
-        return system_base_tokens + history_tokens + chunk_tokens + query_tokens + 1024
+        return system_base_tokens + history_tokens + chunk_tokens + query_tokens + generation_buffer
 
     current_total = get_current_total()
 
     while current_total > target_limit and len(active_db_chunks) > 2:
         evicted_chunk = active_db_chunks.pop(0)
         current_total -= evicted_chunk.get("tokens", 0)
-        print(f"[Memory Manager] ⚠️ Context tight. Evicted old DB Chunk ID: {evicted_chunk.get('id')} (-{evicted_chunk.get('tokens', 0)} tokens).")
+        print(f"[{label}] ⚠️ Context tight ({scope_tag}). Evicted old DB Chunk ID: {evicted_chunk.get('id')} (-{evicted_chunk.get('tokens', 0)} tokens).")
 
     while current_total > target_limit and len(chat_history) >= 2:
         evicted_user = chat_history.pop(0)
         evicted_ai = chat_history.pop(0)
         freed = evicted_user.get("tokens", 0) + evicted_ai.get("tokens", 0)
         current_total -= freed
-        print(f"[Memory Manager] ⚠️ Context tight. Evicted old Chat Turn (-{freed} tokens).")
+        print(f"[{label}] ⚠️ Context tight ({scope_tag}). Evicted old Chat Turn (-{freed} tokens).")
         
     return current_total
 
