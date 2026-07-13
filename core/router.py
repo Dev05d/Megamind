@@ -1,7 +1,7 @@
 import ollama
 from pydantic import BaseModel, Field
 from typing import Optional
-from core.config import ROUTER_MODEL, ROUTER_CONTEXT
+from core import config
 from core.memory_manager import get_exact_tokens, enforce_token_budget
 
 class RouterResponse(BaseModel):
@@ -40,21 +40,21 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
     """
 
     # Parse and establish context limits locally
-    router_limit = int(ROUTER_CONTEXT)
-    system_base_tokens = get_exact_tokens(system_prompt, ROUTER_MODEL)
-    query_tokens = get_exact_tokens(user_query, ROUTER_MODEL)
+    router_limit = int(config.ROUTER_CONTEXT)
+    system_base_tokens = get_exact_tokens(system_prompt, config.ROUTER_MODEL)
+    query_tokens = get_exact_tokens(user_query, config.ROUTER_MODEL)
 
     # Protect operational pipeline state by modifying local shallow copies.
     # Token counts are cached under a model-specific key (tokens__<model>) so
     # this never silently reuses a count computed for CHAT_MODEL elsewhere in
     # the pipeline -- different models can tokenize the same text differently.
-    router_token_key = f"tokens__{ROUTER_MODEL}"
+    router_token_key = f"tokens__{config.ROUTER_MODEL}"
 
     chunks_working_set = []
     for chunk in active_db_chunks:
         chunk_copy = chunk.copy()
         if router_token_key not in chunk_copy:
-            chunk_copy[router_token_key] = get_exact_tokens(chunk_copy["text"], ROUTER_MODEL)
+            chunk_copy[router_token_key] = get_exact_tokens(chunk_copy["text"], config.ROUTER_MODEL)
         # enforce_token_budget reads the "tokens" key; point it at this call's
         # model-specific count without disturbing the original cached value.
         chunk_copy["tokens"] = chunk_copy[router_token_key]
@@ -65,7 +65,7 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
         msg_copy = msg.copy()
         if router_token_key not in msg_copy:
             formatted_msg = f"{msg_copy['role'].capitalize()}: {msg_copy['content']}"
-            msg_copy[router_token_key] = get_exact_tokens(formatted_msg, ROUTER_MODEL)
+            msg_copy[router_token_key] = get_exact_tokens(formatted_msg, config.ROUTER_MODEL)
         msg_copy["tokens"] = msg_copy[router_token_key]
         history_working_set.append(msg_copy)
 
@@ -104,7 +104,7 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
 
     try:
         response = ollama.chat(
-            model=ROUTER_MODEL, 
+            model=config.ROUTER_MODEL, 
             messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_message}

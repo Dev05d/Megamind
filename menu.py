@@ -9,6 +9,7 @@ from tools.show_raw_data import show_raw_data
 from tools.delete_source import delete_source 
 from tools.show_db_info import show_db_info
 from tools.change_embedd_model import change_embedd_model
+from tools.model_migrator import change_chat_model, change_router_model
 
 
 def interactive_menu():
@@ -63,6 +64,8 @@ def interactive_menu():
             tool_action = questionary.select(
                 "🛠️ Select a Tool:",
                 choices=[
+                    "Change Chat Model & Context Window",
+                    "Change Router Model",
                     "Database Info",
                     "Show Raw Chunk Data",
                     "Delete a Source",
@@ -71,7 +74,11 @@ def interactive_menu():
                 ]
             ).ask()
 
-            if tool_action == "Database Info":
+            if tool_action == "Change Chat Model & Context Window":
+                change_chat_model()
+            if tool_action == "Change Router Model":
+                change_router_model()
+            elif tool_action == "Database Info":
                 show_db_info()
             elif tool_action == "Show Raw Chunk Data":
                 show_raw_data()

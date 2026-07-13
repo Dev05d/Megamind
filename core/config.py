@@ -22,10 +22,10 @@ VECTOR_SIZE     = int(os.getenv("VECTOR_SIZE", 2560))
 
 # AI Models (all served locally via Ollama)
 EMBED_MODEL     = os.getenv("EMBED_MODEL", "qwen3-embedding:4b")
-CHAT_MODEL      = os.getenv("CHAT_MODEL",  "llama3.2:3b")
-CONTEXT_LIMIT   = os.getenv("CONTEXT_LIMIT", 8192)
-ROUTER_MODEL    = os.getenv("ROUTER_MODEL", "llama3.2:3b" )
-ROUTER_CONTEXT  = os.getenv("ROUTER_CONTEXT", 4096)
+CHAT_MODEL      = os.getenv("CHAT_MODEL", "lfm2.5:8b")
+CONTEXT_LIMIT   = os.getenv("CONTEXT_LIMIT", 16000)
+ROUTER_MODEL      = os.getenv("ROUTER_MODEL", "llama3.1:8b")
+ROUTER_CONTEXT   = os.getenv("ROUTER_CONTEXT", 8192)
 OCR_MODEL       = os.getenv("OCR_MODEL",   "glm-ocr")
 
 

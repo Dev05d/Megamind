@@ -2,7 +2,7 @@ import ollama
 from qdrant_client import models
 from fastembed import SparseTextEmbedding
 from core.router import route_query
-from core.config import COLLECTION_NAME, EMBED_MODEL, CHAT_MODEL, TOP_K_CHUNKS, DENSE_THRESHOLD, CONTEXT_LIMIT
+from core import config
 from core.vector_store import _get_client
 from core.memory_manager import get_exact_tokens, enforce_token_budget, draw_token_bar
 
@@ -14,14 +14,16 @@ At the end of your response, provide a brief bulleted list of the exact Sources 
 # Instantiate the local BM25 keyword mapper globally
 _sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
 
-def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
+def ask_megamind(initial_question: str, top_k: int = None) -> None:
+    if top_k is None:
+        top_k = int(config.TOP_K_CHUNKS)
     chat_history = []
     active_db_chunks = []
-    system_base_tokens = get_exact_tokens(_SYSTEM_PROMPT, CHAT_MODEL)
+    system_base_tokens = get_exact_tokens(_SYSTEM_PROMPT, config.CHAT_MODEL)
     current_question = initial_question
     
     # Establish the explicit token limit integer for this pipeline
-    main_limit = int(CONTEXT_LIMIT)
+    main_limit = int(config.CONTEXT_LIMIT)
 
     print("\n[Megamind] 🟢 Entering continuous chat. Type 'exit' or 'q' to return to menu.")
     
@@ -30,7 +32,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
             print("\n[Megamind] Ending chat session...")
             break
             
-        query_tokens = get_exact_tokens(current_question, CHAT_MODEL)
+        query_tokens = get_exact_tokens(current_question, config.CHAT_MODEL)
         
         # Router checks bounds against its own config limits internally
         router_decision = route_query(current_question, chat_history, active_db_chunks)
@@ -42,7 +44,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
             print(f"           -> Search Target: '{search_query}'")
             
             try:
-                query_dense = ollama.embed(model=EMBED_MODEL, input=search_query)["embeddings"][0]
+                query_dense = ollama.embed(model=config.EMBED_MODEL, input=search_query)["embeddings"][0]
                 sparse_gen = next(_sparse_model.embed([search_query]))
                 query_sparse = models.SparseVector(
                     indices=sparse_gen.indices.tolist(),
@@ -54,7 +56,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
                         query=query_dense, 
                         using="dense", 
                         limit=top_k,
-                        score_threshold=DENSE_THRESHOLD  
+                        score_threshold=config.DENSE_THRESHOLD  
                     )
                 ]
                 if len(sparse_gen.indices) > 0:
@@ -74,7 +76,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
                     print(f"           -> 🚫 Excluding {len(existing_ids)} active chunk IDs from Qdrant search.")
 
                 response = _get_client().query_points(
-                    collection_name=COLLECTION_NAME,
+                    collection_name=config.COLLECTION_NAME,
                     prefetch=search_prefetches,
                     query=models.FusionQuery(fusion=models.Fusion.RRF),
                     query_filter=query_filter, 
@@ -94,7 +96,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
                         source = r.payload.get('source', 'unknown')
                         chunk_text = f"[Source: {source}]\n{text}"
                         
-                        c_tokens = get_exact_tokens(chunk_text, CHAT_MODEL)
+                        c_tokens = get_exact_tokens(chunk_text, config.CHAT_MODEL)
                         active_db_chunks.append({
                             "id": chunk_id,
                             "text": chunk_text, 
@@ -143,7 +145,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
         
         try:
             stream = ollama.chat(
-                model=CHAT_MODEL,
+                model=config.CHAT_MODEL,
                 messages=llm_payload,
                 stream=True,
                 options={"num_ctx": main_limit}
@@ -168,7 +170,7 @@ def ask_megamind(initial_question: str, top_k: int = int(TOP_K_CHUNKS)) -> None:
         chat_history.append({"role": "user", "content": current_question, "tokens": query_tokens})
         
         if ai_eval_count == 0:
-            ai_eval_count = get_exact_tokens(full_response, CHAT_MODEL)
+            ai_eval_count = get_exact_tokens(full_response, config.CHAT_MODEL)
             
         chat_history.append({"role": "assistant", "content": full_response, "tokens": ai_eval_count})
         
