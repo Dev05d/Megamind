@@ -10,7 +10,7 @@ def ingest_web(url: str) -> None:
 
     # --- DEBUG LINES START ---
     print(f"[Debug] Total characters fetched: {len(text)}")
-    print(f"[Debug] Preview of text:\n{text[:500]}\n--- End Preview ---")
+    print(f"[Debug] Preview of text:\n{text[:1000]}\n--- End Preview ---")
     # --- DEBUG LINES END ---
 
     ingest_text(

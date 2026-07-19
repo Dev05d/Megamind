@@ -43,11 +43,6 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
     router_limit = int(config.ROUTER_CONTEXT)
     system_base_tokens = get_exact_tokens(system_prompt, config.ROUTER_MODEL)
     query_tokens = get_exact_tokens(user_query, config.ROUTER_MODEL)
-
-    # Protect operational pipeline state by modifying local shallow copies.
-    # Token counts are cached under a model-specific key (tokens__<model>) so
-    # this never silently reuses a count computed for CHAT_MODEL elsewhere in
-    # the pipeline -- different models can tokenize the same text differently.
     router_token_key = f"tokens__{config.ROUTER_MODEL}"
 
     chunks_working_set = []
@@ -55,7 +50,6 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
         chunk_copy = chunk.copy()
         if router_token_key not in chunk_copy:
             chunk_copy[router_token_key] = get_exact_tokens(chunk_copy["text"], config.ROUTER_MODEL)
-        # enforce_token_budget reads the "tokens" key; point it at this call's
         # model-specific count without disturbing the original cached value.
         chunk_copy["tokens"] = chunk_copy[router_token_key]
         chunks_working_set.append(chunk_copy)
@@ -69,12 +63,7 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
         msg_copy["tokens"] = msg_copy[router_token_key]
         history_working_set.append(msg_copy)
 
-    # Enforce token budget strictly using the parameter. This operates on
-    # scratch copies (chunks_working_set / history_working_set), so any
-    # eviction here only trims what the router itself sees this call -- it
-    # never touches the real active_db_chunks / chat_history in the main
-    # session. generation_buffer=0 because this call is classification-only
-    # (a short JSON response), not a full chat generation.
+
     total_estimated_tokens = enforce_token_budget(
         system_base_tokens=system_base_tokens,
         query_tokens=query_tokens,
@@ -86,9 +75,8 @@ def route_query(user_query: str, chat_history: list[dict], active_db_chunks: lis
         generation_buffer=0
     )
 
-    #draw_token_bar(used=total_estimated_tokens, context_limit=router_limit)
 
-    # Reconstruct compressed context blocks from surviving working sets
+
     context_blocks = []
 
     if chunks_working_set:

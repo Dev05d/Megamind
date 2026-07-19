@@ -32,6 +32,7 @@ OCR_MODEL       = os.getenv("OCR_MODEL",   "glm-ocr")
 ## ADVANCED SETTINGS ##
 TOP_K_CHUNKS    = os.getenv("TOP_K_CHUNKS", 5)
 DENSE_THRESHOLD = os.getenv("DENSE_THRESHOLD", 0.5)
+CHUNK_SENTENCE_OVERLAP = os.getenv("CHUNK_SENTENCE_OVERLAP", 2)
 
 
 OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "http://localhost:11434")

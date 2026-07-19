@@ -1,7 +1,7 @@
 # core/browser.py
 from playwright.sync_api import sync_playwright
 from readability import Document
-from markdownify import markdownify as md
+from markdownify import markdownify
 
 def fetch_and_clean(url: str) -> str:
     """Uses a disguised Playwright instance to bypass anti-bot screens and fetch clean text."""
@@ -32,4 +32,4 @@ def fetch_and_clean(url: str) -> str:
         
         # Clean HTML and convert to Markdown
         doc = Document(html)
-        return md(doc.summary())
+        return markdownify(doc.summary())

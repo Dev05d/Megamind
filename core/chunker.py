@@ -1,6 +1,7 @@
 import re
+from core.config import CHUNK_SENTENCE_OVERLAP
 
-def get_sentence_overlap(text: str, num_sentences: int = 2) -> str:
+def get_sentence_overlap(text: str, num_sentences: int = int(CHUNK_SENTENCE_OVERLAP)) -> str:
     """Extracts the last N sentences for semantic overlapping."""
     # This regex looks for a period, question mark, or exclamation point, 
     # followed by whitespace, and then a capital letter, number, or LaTeX '$'.
